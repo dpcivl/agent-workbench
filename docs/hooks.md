@@ -11,7 +11,32 @@ agent-workbench가 제공하는 hook, 쓰기 가드, `pre-push` 점검의 동작
 | 오케스트레이터 이벤트 | `python3 -m agent_workbench.emit` (`src/agent_workbench/emit.py`) | 메인 세션이 직접 실행 | 게이트·변경 이벤트 기록 | 아니오 |
 | 푸시 전 점검 | `scripts/pre-push-check.sh`, `scripts/install-pre-push.sh` | `git push` (git `pre-push` hook) | 로컬 경로·이메일·비밀값·금지 파일 점검 | 예 (exit 1) |
 
-Claude Code hook 설정은 `hooks/hooks.json`이다. 플러그인으로 설치하면 `${CLAUDE_PLUGIN_ROOT}`가 이 레포 루트를 가리킨다. 두 Python hook은 표준 라이브러리만 쓰고(PyYAML은 있으면 사용), `agent_workbench` 패키지를 import하지 않아 패키지가 깨져도 기록과 가드는 동작한다.
+Claude Code hook 설정은 `hooks/hooks.json`이다. 플러그인으로 설치하면 `${CLAUDE_PLUGIN_ROOT}`가 이 레포 루트를 가리킨다. 두 Python hook은 표준 라이브러리만 쓰고(PyYAML은 있으면 사용), `agent_workbench` 패키지를 import하지 않아 패키지가 깨져도 기록과 가드는 동작한다. 단, 두 hook은 **워크벤치 프로젝트에서만** 동작한다(다음 절).
+
+## 옵트인: 언제 동작하는가
+
+플러그인이 로드된 세션이라도 작업 폴더가 워크벤치 프로젝트가 아니면 두 hook(`record_event.py`, `write_guard.py`)은 **아무 일도 하지 않는다**. 모든 matcher(`Write|Edit|NotebookEdit`, `Bash`, `SubagentStart`, `SubagentStop`, `PostToolUseFailure`)에 같은 규칙이 적용된다.
+
+**규칙**: 프로젝트 루트에 `.workbench/project.yaml` 파일이 있으면 워크벤치 프로젝트다. `.workbench/` 폴더만 있고 `project.yaml`이 없으면 프로젝트가 아니다.
+
+프로젝트 루트는 다음 순서로 찾는다.
+
+1. `$CLAUDE_PROJECT_DIR`가 설정되어 있으면 그 폴더만 검사한다. 거기에 `.workbench/project.yaml`이 없으면 상위 폴더로 올라가 찾지 않고 프로젝트가 아닌 것으로 본다.
+2. 설정되어 있지 않으면 payload의 `cwd`(없으면 프로세스 현재 디렉터리)에서 올라가며 `.workbench/project.yaml`이 있는 가장 가까운 폴더를 쓴다.
+3. 없으면 프로젝트가 아니다.
+
+프로젝트가 아닐 때: exit 0, 출력 없음, 아무것도 쓰지 않는다. `.workbench/` 폴더를 만들지 않고, 이벤트도 `hook-errors.log`도 남기지 않는다. 가드는 이때 보호 경로(`data/raw/**`, `.git/**`)도 검사하지 않으며 `write_scope`가 없는 서브에이전트(내장 `general-purpose` 포함)의 쓰기도 막지 않는다. 판정 중 예외가 나면 기록기는 "프로젝트 아님"으로 처리하고, 가드는 기존대로 통과(exit 0)시킨다.
+
+프로젝트 안에서는 아래 2~6절의 동작이 그대로다(fail-closed 가드, 보호 경로, 임시 폴더 예외, fail-soft 기록기).
+
+```
+~/notes/                      # .workbench/ 없음 -> hook 전부 no-op, 아무 파일도 안 생긴다
+~/work/forge/                 # .workbench/project.yaml 있음 -> 기록기와 가드 동작
+~/work/forge/docs/deep/       # 여기서 세션을 열어도 상위의 project.yaml을 찾아 동작
+~/work/bare/.workbench/       # project.yaml 없음 -> 프로젝트가 아니므로 no-op
+```
+
+새 프로젝트는 `project-init`(`skills/project-init`)이 `.workbench/project.yaml`을 만들면서 옵트인된다. 이 규칙은 hook에만 적용되며 `emit`(오케스트레이터 이벤트)은 명시적으로 실행하는 명령이라 대상이 아니다.
 
 ## 2. 이벤트 기록기 (`record_event.py`)
 
@@ -57,7 +82,7 @@ PYTHONPATH=<agent-workbench>/src python3 -m agent_workbench.emit gate_requested 
 python3 -m agent_workbench.emit change_requested --phase p3-data --summary "..."
 ```
 
-`gate_requested`, `gate_approved`, `change_requested`, `change_approved`만 받고, `gate_*`는 `--gate`가 필수다. `agent`는 `orchestrator`, `usage`는 `null`. 프로젝트 폴더는 `$CLAUDE_PROJECT_DIR`, 없으면 현재 디렉터리의 가장 가까운 `.workbench/` 상위 폴더, 없으면 현재 디렉터리다. 이 명령만 쓰기에 실패하면 exit 1을 돌려준다(hook이 아니므로 fail-soft 대상이 아니다).
+`gate_requested`, `gate_approved`, `change_requested`, `change_approved`만 받고, `gate_*`는 `--gate`가 필수다. `agent`는 `orchestrator`, `usage`는 `null`. 프로젝트 폴더는 `$CLAUDE_PROJECT_DIR`, 없으면 현재 디렉터리의 가장 가까운 `.workbench/` 상위 폴더, 없으면 현재 디렉터리다(hook의 옵트인 판정과 달리 `project.yaml`을 요구하지 않는다). 이 명령만 쓰기에 실패하면 exit 1을 돌려준다(hook이 아니므로 fail-soft 대상이 아니다).
 
 ## 3. 쓰기 가드 (`write_guard.py`)
 
@@ -106,7 +131,7 @@ python3 -m agent_workbench.emit change_requested --phase p3-data --summary "..."
 2. `<plugin root>/agents/<name>.md` (`$CLAUDE_PLUGIN_ROOT`, 없으면 이 파일 위치에서 계산한 레포 루트)
 3. 파일 이름이 다르면 위 두 폴더에서(각 200개까지) frontmatter의 `name`이 같은 파일
 
-찾은 명세의 frontmatter `write_scope`를 읽는다(문자열, `[a, b]`, 블록 목록 모두 가능, PyYAML 불필요). 명세가 없거나 `write_scope`가 비어 있으면 거부한다. 프로젝트 루트는 `$CLAUDE_PROJECT_DIR`, 없으면 `cwd`에서 올라가며 처음 만나는 `.workbench/` 폴더다.
+찾은 명세의 frontmatter `write_scope`를 읽는다(문자열, `[a, b]`, 블록 목록 모두 가능, PyYAML 불필요). 명세가 없거나 `write_scope`가 비어 있으면 거부한다. 프로젝트 루트는 `$CLAUDE_PROJECT_DIR`, 없으면 `cwd`에서 올라가며 처음 만나는 `.workbench/project.yaml`이 있는 폴더다(옵트인 절). 프로젝트가 아니면 가드 자체가 동작하지 않는다.
 
 글롭 문법: `*`는 `/`를 넘지 않고, `**`는 `/`를 포함해 모든 것에 맞으며, `?`는 한 글자다. 끝이 `/`이면 `/**`와 같다. 절대경로나 `..`가 든 패턴은 아무것도 허용하지 않는다.
 
@@ -204,9 +229,9 @@ git push --no-verify                      # 한 번만 건너뛰기
 
 ## 5. fail-soft 동작과 `hook-errors.log`
 
-- **hook은 세션을 깨지 않는다.** 이벤트 기록기와 가드는 내부 오류(잘못된 JSON, 쓰기 실패, 파서 예외)가 나면 **exit 0**으로 끝낸다. Claude Code에서 도구 호출을 막는 것은 exit 2뿐이므로, 구현 버그나 `python3` 부재가 작업을 멈추지 않는다.
+- **hook은 세션을 깨지 않는다.** 워크벤치 프로젝트가 아니면 둘 다 처음부터 아무것도 하지 않는다(옵트인 절). 프로젝트 안에서 이벤트 기록기와 가드는 내부 오류(잘못된 JSON, 쓰기 실패, 파서 예외)가 나면 **exit 0**으로 끝낸다. Claude Code에서 도구 호출을 막는 것은 exit 2뿐이므로, 구현 버그나 `python3` 부재가 작업을 멈추지 않는다.
 - 그 결과 가드의 **내부 오류는 열린 쪽**이다(차단 안 함). 반면 "명세나 `write_scope`가 없는 서브에이전트"는 오류가 아니라 정책이므로 닫힌 쪽(거부)이다.
-- 오류는 `<project>/.workbench/hook-errors.log`에 한 줄로 남긴다: `<시각>\t<hook 이름>\t<오류 클래스>: <메시지 200자 이내>`. **payload나 응답 내용은 기록하지 않는다.** 로그 쓰기 자체가 실패하면 조용히 넘어간다.
+- 오류는 (워크벤치 프로젝트일 때만) `<project>/.workbench/hook-errors.log`에 한 줄로 남긴다: `<시각>\t<hook 이름>\t<오류 클래스>: <메시지 200자 이내>`. **payload나 응답 내용은 기록하지 않는다.** 로그 쓰기 자체가 실패하면 조용히 넘어간다.
 - 이벤트가 안 쌓이거나 가드가 안 먹는 것 같으면 먼저 이 파일을 확인한다. 이 로그는 커밋 대상이 아니다(레포 `.gitignore`에 추가하는 것을 권장한다. 현재 `.gitignore`는 `.workbench/events*.jsonl`만 제외한다).
 - `pre-push` 점검은 hook이 아니라 게이트이므로 fail-soft가 아니다. 점검이 실패하면(저장소 아님 등) exit 1이고, 푸시되는 ref의 커밋을 나열하지 못하면 `range-error`로 차단한다.
 
@@ -215,7 +240,7 @@ git push --no-verify                      # 한 번만 건너뛰기
 | 변수 | 효과 |
 |---|---|
 | `WORKBENCH_SIMPLE_YAML=1` | `project.yaml`의 `phase` 파생에서 PyYAML을 건너뛰고 줄 단위 파서만 쓴다. PyYAML이 환경마다 다른 결과를 낼 때 디버깅·재현용 |
-| `CLAUDE_PROJECT_DIR` | 프로젝트 루트(이벤트 기록 위치, 가드의 프로젝트 경계). Claude Code가 설정 |
+| `CLAUDE_PROJECT_DIR` | 프로젝트 루트(이벤트 기록 위치, 가드의 프로젝트 경계). Claude Code가 설정. 이 폴더에 `.workbench/project.yaml`이 없으면 hook은 no-op이다(옵트인 절) |
 | `CLAUDE_PLUGIN_ROOT` | 플러그인 루트(`agents/` 명세 위치). Claude Code가 설정 |
 | `TMPDIR` | 임시 폴더 허용 목록에 포함 (3.3) |
 | `CLAUDE_SESSION_ID` / `CLAUDE_CODE_SESSION_ID` | `emit`이 이벤트의 `session_id`로 사용. 없으면 `null` |
@@ -226,4 +251,4 @@ git push --no-verify                      # 한 번만 건너뛰기
 PYTHONPATH=src uv run --no-project --with pytest --with pyyaml pytest tests/hooks -q
 ```
 
-hook은 모두 subprocess로 실행해 검증한다(가드: 허용/거부/우회 시도, 기록기: 필드·중복 제거·동시 기록, 점검: 임시 git 레포에서 HEAD·푸시 범위·실제 `git push`).
+hook은 모두 subprocess로 실행해 검증한다(옵트인: `tests/hooks/test_hooks_optin.py` — 프로젝트 밖·빈 `.workbench/`·상위 폴더 탐색·`CLAUDE_PROJECT_DIR` 우선, 가드: 허용/거부/우회 시도, 기록기: 필드·중복 제거·동시 기록, 점검: 임시 git 레포에서 HEAD·푸시 범위·실제 `git push`).

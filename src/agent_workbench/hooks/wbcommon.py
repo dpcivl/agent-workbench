@@ -130,6 +130,39 @@ def project_dir(start: str | None = None) -> str:
     return str(base)
 
 
+def is_workbench_project(project) -> bool:
+    """True when `<project>/.workbench/project.yaml` is an existing file.
+
+    The opt-in marker of the hooks: a bare `.workbench/` directory does not count.
+    Cheap (one stat) and never raises.
+    """
+    try:
+        return bool(project) and (Path(project) / ".workbench" / "project.yaml").is_file()
+    except Exception:
+        return False
+
+
+def find_workbench_root(start: str | None = None):
+    """Root of the workbench project the hooks should act on, or None (= do nothing).
+
+    `CLAUDE_PROJECT_DIR` if set (then only that directory is checked, there is no
+    fall-back); otherwise the nearest ancestor of `start` (default: process cwd)
+    that satisfies `is_workbench_project`. Never raises: any unexpected error
+    means "not a workbench project".
+    """
+    try:
+        env = os.environ.get("CLAUDE_PROJECT_DIR")
+        if env:
+            return env if is_workbench_project(env) else None
+        base = Path(os.path.abspath(start or os.getcwd()))
+        for d in [base, *base.parents]:
+            if is_workbench_project(d):
+                return str(d)
+    except Exception:
+        pass
+    return None
+
+
 # --------------------------------------------------------------------------- phase
 
 def _scalar(value: str) -> str:
@@ -361,8 +394,14 @@ def append_event(project: str, record: dict) -> Path:
 
 
 def log_error(project, hook: str, exc: BaseException) -> None:
-    """Best-effort error log. Never records payload content, only the error class and message."""
+    """Best-effort error log. Never records payload content, only the error class and message.
+
+    Opt-in: outside a workbench project (no .workbench/project.yaml) nothing is written
+    and no directory is created.
+    """
     try:
+        if not is_workbench_project(project):
+            return
         wb = Path(project) / ".workbench"
         wb.mkdir(parents=True, exist_ok=True)
         line = f"{now_iso()}\t{hook}\t{type(exc).__name__}: {str(exc)[:200]}\n"

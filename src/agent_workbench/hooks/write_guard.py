@@ -18,6 +18,10 @@ Policy (docs/DECISIONS.md sections 4 and 10, revision 1):
     script does internally. Reads are never blocked. Subagents (only) are
     additionally denied git push/commit and gh repo/pr create / release.
 
+Opt-in: outside a workbench project (no `.workbench/project.yaml` in the project
+root, see wbcommon.find_workbench_root) the guard is a complete no-op: exit 0,
+no output, nothing written. Protected paths are not enforced there either.
+
 Deny = exit code 2 with the reason on stderr. Internal errors never block
 (exit 0, logged to .workbench/hook-errors.log).
 """
@@ -393,8 +397,13 @@ def _bash_deny(target: str, verb: str) -> str:
 # ----------------------------------------------------------------- entry
 
 
-def decide(payload: dict):
-    project_root = wb.project_dir(payload.get("cwd") if isinstance(payload.get("cwd"), str) else None)
+def decide(payload: dict, project_root: str | None = None):
+    """Deny reason (str) or None. `project_root` None -> detect; not a workbench project -> None."""
+    if project_root is None:
+        cwd = payload.get("cwd")
+        project_root = wb.find_workbench_root(cwd if isinstance(cwd, str) else None)
+        if project_root is None:
+            return None
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT") or os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     tool = payload.get("tool_name")
@@ -409,13 +418,24 @@ def main() -> int:
     project = None
     try:
         raw = sys.stdin.read()
-        payload = json.loads(raw) if raw.strip() else {}
-        if not isinstance(payload, dict):
-            raise ValueError("payload is not a JSON object")
-        project = wb.project_dir(payload.get("cwd") if isinstance(payload.get("cwd"), str) else None)
-        reason = decide(payload)
+        parse_exc = None
+        try:
+            payload = json.loads(raw) if raw.strip() else {}
+            if not isinstance(payload, dict):
+                raise ValueError("payload is not a JSON object")
+        except Exception as exc:  # reported only inside a workbench project
+            payload, parse_exc = {}, exc
+        cwd = payload.get("cwd")
+        project = wb.find_workbench_root(cwd if isinstance(cwd, str) else None)
+        if project is None:
+            return 0  # opt-in: not a workbench project, do nothing at all
+        if parse_exc is not None:
+            raise parse_exc
+        reason = decide(payload, project)
     except Exception as exc:  # fail-soft: never block on our own bug
-        wb.log_error(project or wb.project_dir(), "write_guard", exc)
+        root = project or wb.find_workbench_root()
+        if root:
+            wb.log_error(root, "write_guard", exc)
         return 0
     if reason:
         sys.stderr.write(reason + "\n")

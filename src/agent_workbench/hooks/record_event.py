@@ -4,6 +4,10 @@
 Reads the hook payload from stdin and appends one JSON line to
 <project>/.workbench/events-YYYY-MM.jsonl.
 
+Opt-in: a complete no-op (exit 0, no output, nothing written, no directory
+created) unless the project root holds `.workbench/project.yaml`
+(see wbcommon.find_workbench_root).
+
 Fail-soft: this hook never blocks or breaks the session. Any internal error
 exits 0 after a best-effort note in <project>/.workbench/hook-errors.log
 (error class + message only, never prompt or response text).
@@ -66,15 +70,26 @@ def main() -> int:
     project = None
     try:
         raw = sys.stdin.read()
-        payload = json.loads(raw) if raw.strip() else {}
-        if not isinstance(payload, dict):
-            raise ValueError("payload is not a JSON object")
-        project = wb.project_dir(payload.get("cwd"))
+        parse_exc = None
+        try:
+            payload = json.loads(raw) if raw.strip() else {}
+            if not isinstance(payload, dict):
+                raise ValueError("payload is not a JSON object")
+        except Exception as exc:  # reported only inside a workbench project
+            payload, parse_exc = {}, exc
+        cwd = payload.get("cwd")
+        project = wb.find_workbench_root(cwd if isinstance(cwd, str) else None)
+        if project is None:
+            return 0  # opt-in: not a workbench project, do nothing at all
+        if parse_exc is not None:
+            raise parse_exc
         record = build(payload, project)
         if record is not None:
             wb.append_event(project, record)
     except Exception as exc:  # fail-soft by design
-        wb.log_error(project or wb.project_dir(), "record_event", exc)
+        root = project or wb.find_workbench_root()
+        if root:
+            wb.log_error(root, "record_event", exc)
     return 0
 
 

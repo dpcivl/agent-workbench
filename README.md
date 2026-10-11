@@ -1,115 +1,249 @@
 # agent-workbench
 
-프로젝트마다 갈아끼워 쓰는 에이전트 오케스트레이션 키트. 데이터 계약(스키마·검증기), hook, 스킬, 공통 에이전트, 로컬 Streamlit 대시보드로 이루어진다. Claude Code용이며 상태: 초기 버전(0.1.0).
+Claude Code에서 **여러 에이전트에게 일을 나눠 맡기고, 진행 상황을 한 화면에서 보게 해 주는 도구**입니다. 프로젝트마다 갈아끼워 쓸 수 있게 만들었고, 첫 사용 프로젝트는 가짜연구소 13기 [pseudolab-13th](https://github.com/dpcivl/pseudolab-13th)입니다. 상태: 초기 버전(0.1.0).
 
-## 무엇을 해 주는가
+이 문서는 위에서부터 순서대로 따라 하면 `pseudolab-13th`에서 바로 쓸 수 있게 썼습니다.
 
-메인 세션이 오케스트레이터가 되어 `/agent-workbench:run-phase <phase-id>`로 단계 하나를 정해진 흐름대로 실행한다.
+| 이 문서에서 | 어디 |
+|---|---|
+| 처음 쓰는 방법 (따라 하기) | [1~7단계](#따라-하기-pseudolab-13th에서-쓰기) |
+| 문제가 생겼을 때 | [막혔을 때](#막혔을-때) |
+| 용어가 어려울 때 | [용어 5개](#용어-5개) |
+| 다른 프로젝트에 쓰려면 | [다른 프로젝트에 쓰기](#다른-프로젝트에-쓰기) |
+| 구조와 한계 | [뒤쪽 참고 섹션](#참고-구성과-한계) |
+
+## 한눈에 보기
 
 ```
-pm-tracker  단계를 doing으로 갱신
-   -> 단계 에이전트들 (프로젝트가 정의, project.yaml 순서대로 실행)
-   -> reviewer          검증, .workbench/reviews/*.json 기록
-   -> pm-tracker        단계를 review로 갱신, gate_requested 기록
-   -> 사용자            approve 또는 revise
-        approve -> done 갱신, gate_approved 기록, fieldbook-writer가 챕터 초안
-        revise  -> change_requested 기록, 영향 보고, 확인 후 재실행
+사람(나)  ──명령──▶  메인 세션  ──일 맡김──▶  에이전트들 (조사, 전처리, 분석 …)
+   ▲                     │                        │
+   └─── 결과 보고·승인 요청 ┘          결과 파일 + 실행 기록
+                                                  │
+                                         대시보드로 진행 상황 확인
 ```
 
-- **상태의 단일 기록자**: 단계·태스크 상태는 `pm-tracker`만 쓴다. 다른 에이전트와 메인 세션은 이벤트만 남긴다.
-- **게이트**: 승인은 사용자만 한다. 메인 세션은 대신 승인하지 않고, 데이터셋 선택·단계 종료에서 멈춘다.
-- **이벤트 로그**: 추가 전용 JSONL. 에이전트 시작·종료·게이트는 hook과 `emit`이 기록하고, 대시보드가 소요 시간·정체·승인 대기·토큰 사용량을 계산한다.
-- **쓰기 가드**: 서브에이전트는 에이전트 명세의 `write_scope` 안에만 쓸 수 있고, `data/raw/**`와 이벤트 로그·`.git/**`는 항상 보호된다 (한계는 아래 참조).
+- 일은 **단계(phase) 5개**로 나뉩니다. 한 단계가 끝나면 **검토 에이전트가 먼저 확인**하고, **사람이 승인해야** 다음 단계로 넘어갑니다.
+- 에이전트마다 **쓸 수 있는 폴더가 정해져** 있어서, 원본 데이터(`data/raw`)는 어떤 에이전트도 건드릴 수 없습니다.
+- 사람이 해야 하는 일은 두 가지뿐입니다. **데이터셋 고르기**와 **단계 승인하기**.
 
-## 구성
+## 따라 하기: pseudolab-13th에서 쓰기
+
+아래 경로는 `~/dev` 아래에 둔다고 가정합니다. 다른 곳에 두면 경로만 바꾸세요.
+
+### 1단계. 준비물 설치 (한 번만)
+
+터미널에서 아래를 차례로 실행합니다.
+
+```bash
+brew install --cask claude-code
+brew install uv
+claude --version
+```
+
+- 첫 줄은 Claude Code를 설치합니다. 처음 `claude`를 실행하면 로그인 안내가 나옵니다.
+- 둘째 줄은 대시보드를 실행할 때 쓰는 도구(uv)를 설치합니다.
+- 마지막 줄에 버전 번호가 나오면 정상입니다.
+
+### 2단계. 두 레포 내려받기 (한 번만)
+
+```bash
+mkdir -p ~/dev && cd ~/dev
+git clone https://github.com/dpcivl/agent-workbench
+git clone https://github.com/dpcivl/pseudolab-13th
+```
+
+`~/dev` 아래에 두 폴더가 나란히 생기면 됩니다.
+
+- `agent-workbench`: 이 도구 (스킬, hook, 공통 에이전트, 대시보드)
+- `pseudolab-13th`: 실제 프로젝트 (도메인 에이전트 6개, 단계 정의, 문서)
+
+### 3단계. 프로젝트 폴더에서 Claude 열기 (작업할 때마다)
+
+```bash
+cd ~/dev/pseudolab-13th
+claude --plugin-dir ~/dev/agent-workbench
+```
+
+- `--plugin-dir`은 "이 세션에서만 agent-workbench를 켠다"는 뜻입니다. 설정은 바뀌지 않습니다.
+- **Claude를 열 때마다 이 줄을 그대로 써야 합니다.** 빼면 아래 명령들이 나오지 않습니다.
+- 확인: 입력창에 `/agent-workbench:`를 치면 `run-phase` 등이 목록에 보입니다.
+
+### 4단계. 첫 단계(P1 조사) 실행하기
+
+Claude 입력창에 아래를 입력합니다.
+
+```
+/agent-workbench:run-phase p1-research
+```
+
+그러면 자동으로 이 순서로 진행됩니다. 중간에 물어보지 않습니다.
+
+| 순서 | 누가 | 무엇을 |
+|---|---|---|
+| 1 | 상태 기록 에이전트 | P1을 "진행 중"으로 바꿈 |
+| 2 | 조사 에이전트 | 열간단조 에너지 소비 구조 조사, KAMP 후보 데이터셋 비교표 작성 |
+| 3 | 검토 에이전트 | 결과를 독립적으로 검증, 반대 증거까지 확인 |
+| 4 | 상태 기록 에이전트 | P1을 "승인 대기"로 바꿈 |
+| 5 | **나에게 보고** | 결과 요약을 보여 주고 **멈춤** |
+
+끝나면 결론, 근거, 되돌릴 수 있는지 순서로 보고가 나옵니다. 제가 시험한 더미 단계에서는 한 번 실행에 모델 비용이 약 0.8달러였습니다. 실제 조사 단계는 더 걸리고 더 들 수 있습니다.
+
+### 5단계. 결과 확인하고 데이터셋 고르기
+
+P1이 만든 파일은 여기에 있습니다.
+
+| 파일 | 내용 |
+|---|---|
+| `docs/research/energy-structure.md` | 에너지 소비 구조와 손실 요인 조사 |
+| `docs/research/kamp-candidates.md` | **KAMP 후보 데이터셋 비교표** (여기서 하나 고릅니다) |
+| `.workbench/reviews/p1-research-1.md` | 검토 에이전트의 확인 결과 (사람이 읽는 요약) |
+
+확인할 것은 세 가지입니다.
+
+1. 검토 결과가 `pass`인지, **미해결 `high` 지적**이 없는지
+2. 조사 문서의 주장마다 **출처(URL, 접근일)**가 있는지, `미검증`이라고 표시한 곳은 어디인지
+3. 후보 데이터셋 중 어느 것이 목적(열간단조 에너지 분석)에 맞는지
+
+데이터셋은 **사람이 직접** 고르고 KAMP 사이트에서 내려받습니다 (로그인과 이용 조건 확인이 필요해서 에이전트가 대신하지 않습니다). 내려받은 파일은 `pseudolab-13th/data/raw/`에 넣습니다. 이 폴더의 파일은 이후 에이전트가 수정하지 않고, 깃에도 올라가지 않습니다. 고른 데이터셋의 이름을 기록하는 전용 자리는 아직 없습니다. 지금은 `data/raw/`에 들어 있는 파일이 곧 선택입니다.
+
+### 6단계. 승인하거나 수정 요청하기
+
+```
+/agent-workbench:run-phase p1-research approve
+```
+
+- 승인하면 P1이 "완료"가 되고, 필드북 챕터 초안(`docs/fieldbook/01-...md`)이 만들어집니다.
+
+수정이 필요하면:
+
+```
+/agent-workbench:run-phase p1-research revise 후보 데이터셋 비교 기준에 설비 종류를 추가해 주세요
+```
+
+- 먼저 "무엇이 바뀌는지" 보고합니다. 확인 후 아래를 입력해야 다시 실행합니다.
+
+```
+/agent-workbench:run-phase p1-research revise confirm
+```
+
+### 7단계. 다음 단계 반복하기
+
+단계는 순서대로만 실행됩니다. 앞 단계가 "완료"여야 다음 단계를 시작할 수 있습니다.
+
+| 단계 | 명령 | 에이전트 | 승인 전에 확인할 것 | 시작 전 필요한 것 |
+|---|---|---|---|---|
+| P1 조사 | `run-phase p1-research` | 조사 | 후보 비교표, 출처 | 없음 |
+| P2 AX 도입 설계 | `run-phase p2-ax-design` | 설계 | 유스케이스와 KPI가 데이터와 이어지는지 | P1 완료 |
+| P3 데이터 전처리 | `run-phase p3-data` | 전처리 | 행 수 변화 로그, 재실행 시 같은 결과인지 | P1 완료, **`data/raw`에 데이터** |
+| P4 요인 분석 | `run-phase p4-analysis` | 분석 | 효과 크기와 불확실성, 반대 증거 | P3 완료 |
+| P5 예측·절감 | `run-phase p5-forecast` | 모델링, 시뮬레이션 | 누수 점검, **전력 단가·배출계수 같은 가정값과 출처** | P4 완료 |
+
+각 단계의 승인은 항상 `approve`, 수정 요청은 `revise`입니다. 결과 해석(어떤 요인이 중요한지, 어떤 솔루션이 맞는지)은 **사람이 판단하고** 에이전트는 근거와 초안을 제공합니다.
+
+### 진행 상황을 화면으로 보기 (선택)
+
+새 터미널 탭에서 실행합니다.
+
+```bash
+cd ~/dev/agent-workbench
+PYTHONPATH=src uv run --no-project --with streamlit --with altair --with pandas --with pyyaml --with jsonschema python -m agent_workbench.dashboard --project ~/dev/pseudolab-13th -- --server.headless true
+```
+
+터미널에 나오는 주소(보통 `http://localhost:8501`)를 브라우저에서 엽니다. 종료는 터미널에서 `Ctrl-C`입니다.
+
+| 탭 | 보는 것 |
+|---|---|
+| 개요 | **"지금 내가 해야 할 일"** (승인 대기, 막힌 단계, 멈춘 에이전트), 단계별 진행판 |
+| 타임라인 | 어떤 에이전트가 언제, 얼마나 걸렸는지 |
+| 산출물 | 단계별로 약속한 파일이 실제로 있는지 |
+| 리뷰 | 검토 결과, 지적 목록 |
+| 운영 지표 | 소요 시간, 승인 대기 시간, 재작업 횟수, 토큰 사용량 |
+| KPI | 예측 모델 정확도, 절감 예측 (P5 이후) |
+
+- 대시보드는 **보기만** 합니다. 승인이나 상태 변경은 Claude 세션에서 합니다.
+- 아직 실행한 단계가 없으면 비어 있습니다. 먼저 데모로 화면을 보고 싶다면 `--project examples/demo-project`로 실행하세요 (가짜 데이터입니다).
+
+## 막혔을 때
+
+| 증상 | 원인과 해결 |
+|---|---|
+| `/agent-workbench:` 명령이 안 나옵니다 | Claude를 `--plugin-dir ~/dev/agent-workbench` 없이 열었습니다. 닫고 3단계의 명령으로 다시 여세요. |
+| `write-scope ... 차단` 메시지가 나옵니다 | **정상적인 보호 동작**입니다. 어느 에이전트가 어디에 쓰려 했는지 메시지에 나옵니다. 에이전트 파일(`.claude/agents/<이름>.md`)의 `write_scope`가 허용 범위입니다. |
+| "앞 단계가 완료되지 않았다"고 나옵니다 | 단계는 순서대로만 실행됩니다. 앞 단계를 `approve`했는지 확인하세요. |
+| P3를 시작하려는데 데이터가 없다고 합니다 | `data/raw/`에 KAMP 파일을 넣어야 합니다. 5단계를 참고하세요. |
+| 대시보드에 "정체"가 표시됩니다 | 시작한 에이전트의 종료 기록이 30분 넘게 없다는 뜻입니다. 터미널에서 실제로 돌고 있는지 먼저 확인하세요. 기준 시간은 대시보드 왼쪽에서 바꿀 수 있습니다. |
+| 승인했는데 챕터에 `초안` 표시가 있습니다 | 미해결 지적이 남은 채 승인하면 해당 내용에 `초안` 표시가 붙습니다. 정상입니다. |
+| 대시보드가 비어 있습니다 | 아직 단계를 실행하지 않았거나, `--project` 경로가 틀렸습니다. |
+
+## 용어 5개
+
+| 용어 | 뜻 |
+|---|---|
+| **단계(phase)** | 프로젝트를 나눈 큰 덩어리. 이 프로젝트는 P1~P5 |
+| **에이전트** | 맡은 역할 하나를 도구를 써서 스스로 수행하는 AI 작업자 |
+| **오케스트레이터** | 에이전트들에게 일을 나눠 주고 순서와 승인을 관리하는 쪽. 이 도구에서는 지금 대화 중인 메인 세션 |
+| **승인 지점(gate)** | 사람이 확인해야 다음으로 넘어가는 지점 |
+| **쓰기 범위(write_scope)** | 에이전트가 파일을 쓸 수 있는 폴더 목록 |
+
+## 다른 프로젝트에 쓰기
+
+`pseudolab-13th` 말고 새 프로젝트에도 같은 도구를 씁니다.
+
+1. 새 프로젝트 폴더에서 3단계처럼 `claude --plugin-dir ~/dev/agent-workbench`로 엽니다.
+2. `/agent-workbench:project-init <프로젝트id> "<프로젝트 이름>"`을 실행합니다. `.workbench/project.yaml` 템플릿이 만들어지고 프로젝트가 등록부(`~/.agent-workbench/workspace.yaml`)에 추가됩니다.
+3. `.workbench/project.yaml`에서 단계(`phases`)와 약속할 산출물(`deliverables`)을 고칩니다.
+4. `.claude/agents/`에 이 프로젝트의 **도메인 에이전트**를 만듭니다. 각 파일에 `write_scope`를 반드시 적어야 합니다. (`pseudolab-13th/.claude/agents/`의 파일을 예시로 쓰세요. 공통 에이전트 3개는 이 도구가 제공합니다.)
+5. 4단계처럼 `/agent-workbench:run-phase <단계id>`로 시작합니다.
+
+대시보드는 `--project` 없이 실행하면 등록부에 있는 프로젝트를 드롭다운으로 고를 수 있습니다.
+
+**참고:** 이 도구의 hook(실행 기록, 쓰기 가드)은 폴더에 `.workbench/project.yaml`이 있을 때만 동작합니다. 없는 폴더에서는 플러그인을 켜도 아무 일도 하지 않습니다. 기록도, 차단도, `.workbench/` 폴더 생성도 없습니다.
+
+## 참고: 구성과 한계
+
+### 구성
 
 | 경로 | 내용 |
 |---|---|
-| `agents/` | 공통 에이전트 3개: `pm-tracker`, `reviewer`, `fieldbook-writer` (도메인 에이전트는 각 프로젝트가 둔다) |
+| `agents/` | 공통 에이전트 3개: `pm-tracker`(상태 기록), `reviewer`(검토), `fieldbook-writer`(챕터 초안) |
 | `skills/` | `project-init`, `run-phase`, `weekly-report` |
-| `hooks/` | Claude Code hook 설정 (`hooks.json`) |
-| `src/agent_workbench/contract/` | 스키마 검증기, 글롭 해석, 검증 CLI |
-| `src/agent_workbench/hooks/` | 이벤트 기록기, 쓰기 가드 (표준 라이브러리 위주, 내부 오류에도 세션을 깨지 않음) |
-| `src/agent_workbench/dashboard/` | 로컬 전용 읽기 전용 Streamlit 대시보드 |
-| `src/agent_workbench/emit.py` | 오케스트레이터 이벤트(게이트·수정 요청) 기록 CLI |
-| `schema/` | `project`, `events`, `review`, `workspace` JSON Schema |
-| `examples/` | 예시 파일과 가짜 데이터의 데모 프로젝트 `demo-project/` |
-| `scripts/` | `pre-push` 점검 스크립트와 설치기 |
-| `docs/` | 계약, hook, 스킬, 대시보드 상세 문서 |
-| `.claude-plugin/` | 플러그인·마켓플레이스 매니페스트 |
-| `tests/` | contract, hooks, dashboard 테스트 |
+| `hooks/` | 에이전트 시작·종료 기록, 쓰기 가드 설정 |
+| `src/agent_workbench/contract/` | 데이터 형식 검증기와 CLI |
+| `src/agent_workbench/hooks/` | 이벤트 기록기, 쓰기 가드 |
+| `src/agent_workbench/dashboard/` | 로컬 전용 읽기 전용 대시보드 |
+| `schema/`, `examples/` | JSON Schema와 예시, 가짜 데이터 데모 프로젝트 |
+| `scripts/` | 푸시 전 점검 스크립트 |
+| `docs/` | 상세 문서 |
 
-## 빠른 시작
+### 동작 원리 (요약)
 
-Python 3.10 이상과 [uv](https://docs.astral.sh/uv/)를 가정한다. 아래는 이 레포 루트에서 실행한다.
+- 상태(단계·태스크)는 `pm-tracker`만 `.workbench/project.yaml`에 씁니다. 다른 에이전트는 기록(이벤트)만 남깁니다.
+- 실행 기록(`.workbench/events-*.jsonl`)은 에이전트가 시작하고 끝날 때 hook이 자동으로 한 줄씩 추가합니다. 프롬프트와 응답 원문은 기록하지 않습니다.
+- 대시보드는 이 기록과 `project.yaml`, 산출물 파일을 읽어 화면을 만듭니다.
 
-**(a) 데모 대시보드 열기**
+### 알려진 한계
 
-```bash
-PYTHONPATH=src uv run --no-project --with streamlit --with altair --with pandas --with pyyaml --with jsonschema python -m agent_workbench.dashboard --project examples/demo-project
-```
+- **쓰기 범위 강제는 파일 쓰기 도구에 대해서만 완전합니다.** 셸 명령(`Bash`)은 명령 문자열만 보는 감지라 일부를 놓칩니다 (`cd data/raw && rm x`, `find ... -delete` 등). 이런 경우는 사후에 검토 에이전트의 변경 파일 점검으로만 드러납니다.
+- **검증된 방법은 `--plugin-dir`뿐입니다.** 마켓플레이스 등록으로 영구 설치하는 흐름은 아직 시험하지 않았습니다.
+- **실제 KAMP 데이터와 도메인 에이전트 6개로 끝까지 돌린 사례는 아직 없습니다.** 더미 단계로만 전체 흐름을 시험했습니다.
+- 서브에이전트가 **실행 도중** 실패할 때 오류가 기록되는지는 확인하지 못했습니다. 이 경우 종료 기록이 없는 시작을 대시보드가 "정체"로 표시합니다.
+- 사용량(토큰) 추출은 Claude Code의 비공개 기록 형식에 의존해서 깨질 수 있습니다. 실패하면 값이 비고 나머지는 영향이 없습니다.
+- 사용자 1명, 단계 5개 규모라서 운영 지표는 참고용 기술 통계입니다.
 
-**(b) 프로젝트 데이터 검증**
+### 개인정보와 데이터
 
-```bash
-PYTHONPATH=src uv run --no-project --with pyyaml --with jsonschema python -m agent_workbench.contract validate <프로젝트>/.workbench/project.yaml
-```
+- 실행 기록과 원본·가공 데이터는 커밋하지 않습니다 (`.gitignore`).
+- `examples/`의 데이터는 모두 가짜입니다.
+- 푸시 전 점검이 로컬 경로, 이메일, 비밀값, 금지 파일이 공개 이력에 들어가는 것을 막습니다. 설치: `scripts/install-pre-push.sh <레포 경로>`
+- 대시보드는 로컬(`127.0.0.1`)에서만 열리고 외부로 통신하지 않습니다.
 
-`events-*.jsonl`, `reviews/*.json`, `workspace.yaml`도 같은 방식으로 검증한다(파일 이름으로 종류를 감지). 종료 코드 0이면 모두 유효하다.
+### 더 자세한 문서
 
-**(c) 푸시 전 점검 설치**
-
-```bash
-scripts/install-pre-push.sh <repo-path>
-```
-
-로컬 절대경로, 이메일, 비밀값, 금지 파일(`data/`, `.env*`, `*.pdf`)을 푸시되는 커밋 범위까지 검사한다. 이미 다른 `pre-push` hook이 있으면 덮어쓰지 않는다.
-
-## 플러그인으로 사용하기
-
-`.claude-plugin/plugin.json`이 플러그인 매니페스트이고, `.claude-plugin/marketplace.json`은 이 레포 하나를 담은 단일 플러그인 마켓플레이스다. 두 파일 모두 `claude plugin validate`를 통과한다.
-
-**검증된 방법 (세션 한정, 설정을 바꾸지 않는다):**
-
-```bash
-git clone https://github.com/dpcivl/agent-workbench
-cd <프로젝트 폴더>
-claude --plugin-dir <agent-workbench 경로>
-```
-
-이 방식으로 임시 프로젝트에서 `/agent-workbench:run-phase`의 시작·승인 흐름, `agent-workbench:*` 에이전트 호출, 이벤트 기록(사용량 포함), 쓰기 가드 차단을 실제 세션에서 확인했다. 스킬은 `/agent-workbench:<skill>`, 에이전트는 `agent-workbench:<agent>` 이름으로 호출한다.
-
-**아직 검증하지 않은 것:**
-
-- 마켓플레이스를 등록해 `claude plugin install agent-workbench@agent-workbench`로 영구 설치하는 흐름
-- 서브에이전트가 **실행 도중** 실패할 때 `agent_error`가 기록되는지. 존재하지 않는 에이전트 유형을 호출하는 실패는 확인했다. 발화하지 않는 경우에는 종료 이벤트가 없는 시작을 대시보드가 "정체"로 표시하는 폴백이 적용된다.
-- 실제 KAMP 데이터와 도메인 에이전트로 끝까지 돌린 사례 (더미 단계로만 흐름을 시험했다)
-
-## 알려진 한계
-
-- **쓰기 범위 강제는 `Write`/`Edit`/`NotebookEdit`에 대해서만 완전하다.** `Bash`는 명령 문자열만 보는 best-effort 감지라 `cd data/raw && rm x`, `find ... -delete`, `git clean -fdx`, 스크립트 안의 파일 삭제를 놓친다. `Bash`가 있는 에이전트는 셸로 범위를 우회할 수 있고, 사후에 `reviewer`의 변경 파일 점검으로만 드러난다.
-- **표본이 작다.** 사용자 1명, 공통 에이전트 3개 기준이며 운영 지표는 기술 통계 수준이다. 추세나 유의성을 말하지 않는다.
-- **트랜스크립트 형식은 문서화되어 있지 않다.** 토큰·모델 추출은 이 형식에 의존해 깨질 수 있다. 실패하면 `usage`는 `null`로 두고, 핵심 스키마와 나머지 이벤트에는 영향이 없다(fail-soft).
-- hook 내부 오류는 세션을 막지 않고 `.workbench/hook-errors.log`에만 남는다. 그만큼 가드의 내부 오류는 "열린 쪽"이다.
-- 대시보드는 읽기 전용이다. 승인과 상태 변경은 대시보드에서 하지 않는다.
-
-## 개인정보·데이터 정책
-
-- 이벤트 로그(`.workbench/events*.jsonl`)는 커밋하지 않는다(gitignore). 프롬프트·응답 원문은 기록하지 않고, 요약은 앞 200자에 절대경로를 마스킹한다.
-- 이 레포를 쓰는 프로젝트의 원본·가공 데이터(예: KAMP 제조 데이터)는 커밋하지 않는다. 프로젝트 레포는 `data/`를 gitignore하고 다운로드 안내만 둔다.
-- `examples/`의 데이터는 모두 가짜이며 실제 로그·데이터가 아니다.
-- 푸시 전 점검이 로컬 경로·이메일·비밀값·금지 파일이 공개 이력에 들어가는 것을 막는다(HEAD뿐 아니라 푸시 범위 포함).
-- 대시보드는 로컬(`127.0.0.1`)에서만 열리고 네트워크 호출·사용 통계 수집이 없다.
-
-## 문서
-
-- [`docs/contract.md`](docs/contract.md): 데이터 계약(이벤트, `project.yaml`, 리뷰, 등록부)과 검증 방법
+- [`docs/contract.md`](docs/contract.md): 데이터 형식 (이벤트, `project.yaml`, 리뷰, 등록부)
 - [`docs/hooks.md`](docs/hooks.md): hook, 쓰기 가드, 푸시 전 점검과 한계
-- [`docs/skills.md`](docs/skills.md): 스킬과 `run-phase` 상태 기계
-- [`docs/dashboard.md`](docs/dashboard.md): 대시보드 화면, 지표 계산, 한계
-
-이 키트의 첫 사용 프로젝트는 가짜연구소 13기 *Manufacturing AX Fieldbook*(`pseudolab-13th`)이다. 저장소: <https://github.com/dpcivl/pseudolab-13th>.
+- [`docs/skills.md`](docs/skills.md): 스킬과 `run-phase` 상태 전이
+- [`docs/dashboard.md`](docs/dashboard.md): 대시보드 화면과 지표 계산
 
 ## 기여와 라이선스
 
-이슈와 제안을 환영한다. 스키마·에이전트 명세·쓰기 범위를 바꾸는 변경은 먼저 이슈로 논의해 주길 바란다. 라이선스는 [MIT](LICENSE).
+이슈와 제안을 환영합니다. 스키마, 에이전트 명세, 쓰기 범위를 바꾸는 변경은 먼저 이슈로 논의해 주세요. 라이선스는 [MIT](LICENSE).

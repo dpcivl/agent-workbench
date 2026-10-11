@@ -290,11 +290,15 @@ def test_fail_soft_logs_error_without_payload_text(project):
     assert "record_event" in log and "SECRET-TEXT" not in log
 
 
-def test_fail_soft_when_workbench_dir_unwritable(project):
-    (project.root / ".workbench").rmdir()
-    (project.root / ".workbench").write_text("i am a file")
+def test_fail_soft_when_events_file_unwritable(project):
+    # the events file name for this month is occupied by a directory -> os.open fails (EISDIR)
+    month = datetime.now().astimezone().strftime("%Y-%m")
+    (project.root / ".workbench" / f"events-{month}.jsonl").mkdir()
     r = project.run(RECORD, start_payload())
     assert r.returncode == 0
+    assert r.stdout == ""
+    log = (project.root / ".workbench" / "hook-errors.log").read_text()
+    assert "record_event" in log
 
 
 def test_concurrent_appends_stay_whole_lines(project):
