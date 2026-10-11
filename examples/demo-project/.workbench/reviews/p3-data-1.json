@@ -1,0 +1,11 @@
+{
+  "phase": "p3-data",
+  "n": 1,
+  "verdict": "needs_change",
+  "findings": [
+    {"category": "reproducibility", "severity": "high", "resolved": false},
+    {"category": "documentation", "severity": "low", "resolved": true},
+    {"category": "data-quality", "severity": "medium", "resolved": false}
+  ],
+  "counter_evidence_count": 2
+}

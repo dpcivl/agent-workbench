@@ -1,0 +1,19 @@
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+.pytest_cache/
+
+# workbench runtime logs (never committed)
+.workbench/events*.jsonl
+.workbench/*.log
+
+# secrets
+.env
+.env.*

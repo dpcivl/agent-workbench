@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agent-workbench event",
+  "description": "One line of .workbench/events-YYYY-MM.jsonl (append-only). Unknown extra fields are allowed on purpose: the log is written by hooks and read by a dashboard that may be older or newer, so additive changes must not invalidate existing lines. Breaking changes bump `v`.",
+  "type": "object",
+  "required": ["v", "ts", "event"],
+  "additionalProperties": true,
+  "properties": {
+    "v": {
+      "description": "Schema version.",
+      "const": 1
+    },
+    "ts": {
+      "description": "ISO 8601 timestamp with an explicit timezone offset (or Z).",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "event": {
+      "type": "string",
+      "enum": [
+        "agent_start",
+        "agent_stop",
+        "agent_error",
+        "gate_requested",
+        "gate_approved",
+        "change_requested",
+        "change_approved"
+      ]
+    },
+    "session_id": {
+      "description": "Provided by the hook. Required for agent_* events.",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "agent_id": {
+      "description": "Provided by the hook; pairs agent_start with agent_stop. Required (non-null) for agent_start/agent_stop. May be null on agent_error: a failed Agent tool call (e.g. unknown subagent type) never started, so no id exists.",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "agent": {
+      "description": "Agent name. \"orchestrator\" for events written on behalf of the main session. Required for agent_* events.",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "phase": {
+      "description": "Id of the phase that is `doing` in project.yaml when the event was written; if none, the single phase in `review`; otherwise null. Readers may infer a phase for null events (see docs/contract.md).",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "gate": {
+      "description": "Gate identifier (e.g. dataset-selection, phase-end). Only meaningful on gate/change events; non-null is required on gate_requested and gate_approved.",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "summary": {
+      "description": "First 200 characters of the response, absolute paths masked. Never the full prompt or response.",
+      "type": ["string", "null"],
+      "maxLength": 200
+    },
+    "rev": {
+      "description": "Short git hash of the project, null when unavailable.",
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{4,40}$"
+    },
+    "usage": {
+      "description": "Token usage of the subagent run. Only allowed (non-null) on agent_stop; null when extraction failed. Cache tokens are required keys: input_tokens counts only the uncached part of the input, so cost and volume analysis needs all three input fields (input_tokens + cache_creation_input_tokens + cache_read_input_tokens).",
+      "type": ["object", "null"],
+      "required": [
+        "model",
+        "input_tokens",
+        "output_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "model": {
+          "description": "Model name as recorded in the transcript; null when it could not be determined.",
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "input_tokens": { "description": "Uncached input tokens.", "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "cache_creation_input_tokens": {
+          "description": "Input tokens written to the prompt cache.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_read_input_tokens": {
+          "description": "Input tokens served from the prompt cache.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "event": { "enum": ["agent_start", "agent_stop"] } },
+        "required": ["event"]
+      },
+      "then": {
+        "required": ["session_id", "agent_id", "agent"],
+        "properties": {
+          "session_id": { "type": "string" },
+          "agent_id": { "type": "string" },
+          "agent": { "type": "string" },
+          "gate": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event": { "const": "agent_error" } },
+        "required": ["event"]
+      },
+      "then": {
+        "required": ["session_id", "agent_id", "agent"],
+        "properties": {
+          "session_id": { "type": "string" },
+          "agent_id": { "type": ["string", "null"] },
+          "agent": { "type": "string" },
+          "gate": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event": { "enum": ["gate_requested", "gate_approved"] } },
+        "required": ["event"]
+      },
+      "then": {
+        "required": ["gate"],
+        "properties": { "gate": { "type": "string" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event": { "const": "agent_stop" } },
+        "required": ["event"]
+      },
+      "else": {
+        "properties": { "usage": { "type": "null" } }
+      }
+    }
+  ]
+}

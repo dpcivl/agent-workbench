@@ -1,0 +1,11 @@
+{
+  "phase": "p5-forecast",
+  "n": 1,
+  "verdict": "pass",
+  "findings": [
+    {"category": "assumptions", "severity": "medium", "resolved": false},
+    {"category": "leakage", "severity": "high", "resolved": true},
+    {"category": "documentation", "severity": "low", "resolved": true}
+  ],
+  "counter_evidence_count": 3
+}

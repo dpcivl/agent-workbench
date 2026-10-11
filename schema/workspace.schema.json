@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agent-workbench workspace",
+  "description": "Contents of ~/.agent-workbench/workspace.yaml (parsed YAML): the registry of projects the dashboard can open.",
+  "type": "object",
+  "required": ["projects"],
+  "additionalProperties": false,
+  "properties": {
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "path"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Should equal project.id in that project's .workbench/project.yaml.",
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+          },
+          "path": {
+            "description": "Project root directory; may start with ~.",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

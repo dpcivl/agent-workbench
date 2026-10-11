@@ -1,0 +1,4 @@
+# Copy to ~/.agent-workbench/workspace.yaml and adjust the paths.
+projects:
+  - id: example-project
+    path: ~/dev/example-project

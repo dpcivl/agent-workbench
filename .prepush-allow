@@ -1,0 +1,6 @@
+# Intentional exceptions for the pre-push check (grep -E, matched against "<path>:<line>:<match>").
+# Test fixtures whose purpose is to exercise the masking code with secret/e-mail/path look-alikes.
+^tests/hooks/test_hooks_sanitize\.py:
+^tests/dashboard/test_dashboard_loader\.py:[0-9]+:/Users/someone/
+# Documentation row that names the "password=..." pattern the checker looks for.
+^docs/hooks\.md:[0-9]+:.*password=

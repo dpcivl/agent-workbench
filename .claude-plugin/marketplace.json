@@ -1,0 +1,12 @@
+{
+  "name": "agent-workbench",
+  "description": "Agent Workbench plugin marketplace (single-plugin)",
+  "owner": { "name": "dpcivl" },
+  "plugins": [
+    {
+      "name": "agent-workbench",
+      "source": "./",
+      "description": "Per-project agent orchestration kit: event contract, hooks, skills, common agents and a Streamlit dashboard"
+    }
+  ]
+}

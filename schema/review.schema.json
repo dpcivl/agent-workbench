@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agent-workbench review",
+  "description": "Contents of .workbench/reviews/<phase>-<n>.json. `phase` and `n` are optional self-describing copies of the file name; when present the Python validator checks that they match the file name. Semantic rule enforced by the Python validator (not expressible here): verdict `pass` requires counter_evidence_count >= 1 and no finding with severity `high` and resolved false.",
+  "type": "object",
+  "required": ["verdict", "findings", "counter_evidence_count"],
+  "additionalProperties": false,
+  "properties": {
+    "phase": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
+    "n": { "description": "Review iteration, starting at 1.", "type": "integer", "minimum": 1 },
+    "verdict": { "enum": ["pass", "needs_change"] },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["category", "severity", "resolved"],
+        "additionalProperties": false,
+        "properties": {
+          "category": { "type": "string", "minLength": 1 },
+          "severity": { "enum": ["high", "medium", "low"] },
+          "resolved": { "type": "boolean" }
+        }
+      }
+    },
+    "counter_evidence_count": { "type": "integer", "minimum": 0 }
+  }
+}

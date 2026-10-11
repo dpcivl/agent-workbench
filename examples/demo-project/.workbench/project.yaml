@@ -1,0 +1,98 @@
+# Self-contained fake project for the agent-workbench dashboard demo.
+# Derived from examples/project.yaml. All content and numbers are made up.
+project:
+  id: demo-project
+  name: 데모 프로젝트
+  description: 대시보드를 실제 데이터 없이 보여 주기 위한 가상의 프로젝트 (모든 값은 가짜).
+
+agents:
+  - id: researcher
+    role: Surveys sources and lists candidate datasets
+  - id: planner
+    role: Turns findings into a prioritized plan
+  - id: data-prep
+    role: Builds a reproducible cleaning pipeline
+  - id: analyst
+    role: Analyzes the cleaned data and proposes options
+  - id: ml-modeler
+    role: Trains and evaluates the forecasting model
+  - id: savings-simulator
+    role: Estimates savings under the proposed solution
+  - id: pm-tracker
+    role: Keeps project.yaml status in sync with events and deliverables
+  - id: reviewer
+    role: Independently verifies each phase before the gate
+
+phases:
+  - id: p1-research
+    name: 조사
+    status: done
+    agents: [researcher]
+    deliverables:
+      - docs/research/summary.md
+      - docs/research/dataset-candidates.md
+    gate: dataset-selection
+    tasks:
+      - {id: t1, title: Summarize background, status: done, agent: researcher}
+      - {id: t2, title: Compare candidate datasets, status: done, agent: researcher}
+
+  - id: p2-design
+    name: 설계
+    status: done
+    agents: [planner]
+    deliverables:
+      - docs/plan/plan.md
+    gate: phase-end
+    tasks:
+      - {id: t1, title: Draft the plan, status: done, agent: planner}
+
+  - id: p3-data
+    name: 데이터 전처리
+    status: done
+    agents: [data-prep, analyst]
+    deliverables:
+      - src/pipeline/clean.py
+      - docs/data/data-dictionary.md
+      - docs/data/quality-report.md
+    gate: phase-end
+    tasks:
+      - {id: t1, title: Write the cleaning pipeline, status: done, agent: data-prep}
+      - {id: t2, title: Profile missing values, status: done, agent: analyst}
+      - {id: t3, title: Write the data dictionary, status: done, agent: data-prep}
+
+  - id: p4-analysis
+    name: 요인 분석
+    status: done
+    agents: [analyst]
+    deliverables:
+      - docs/analysis/findings.md
+      - notebooks/*.ipynb
+      - results/p4-analysis/scenario-*
+    gate: phase-end
+    tasks:
+      - {id: t1, title: Explore factors, status: done, agent: analyst}
+      - {id: t2, title: Propose solution candidates, status: done, agent: analyst}
+
+  - id: p5-forecast
+    name: 예측과 절감 분석
+    status: review
+    agents: [ml-modeler, savings-simulator]
+    deliverables:
+      - docs/models/model-card.md
+      - results/p5-forecast/scenario-*
+      - results/p5-forecast/metrics.json
+      - docs/simulation/assumptions.md
+    gate: phase-end
+    tasks:
+      - {id: t1, title: Train the forecasting model, status: done, agent: ml-modeler}
+      - {id: t2, title: Simulate savings scenarios, status: done, agent: savings-simulator}
+      - {id: t3, title: List external assumptions, status: doing, agent: savings-simulator}
+
+  - id: p6-report
+    name: 보고서 작성
+    status: blocked
+    agents: [planner]
+    deliverables:
+      - docs/report/summary.md
+    gate: phase-end
+    tasks: []

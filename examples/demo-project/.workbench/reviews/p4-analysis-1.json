@@ -1,0 +1,10 @@
+{
+  "phase": "p4-analysis",
+  "n": 1,
+  "verdict": "pass",
+  "findings": [
+    {"category": "uncertainty", "severity": "medium", "resolved": true},
+    {"category": "documentation", "severity": "low", "resolved": false}
+  ],
+  "counter_evidence_count": 3
+}

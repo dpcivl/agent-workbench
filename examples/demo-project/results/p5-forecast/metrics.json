@@ -1,0 +1,17 @@
+{
+  "model": {
+    "split": "time-ordered",
+    "mape_pct": 6.8,
+    "baseline_mape_pct": 11.2,
+    "rmse_kwh": 14.7,
+    "r2": 0.91,
+    "train_rows": 18240,
+    "test_rows": 4560
+  },
+  "savings": {
+    "kwh_per_month": {"point": 1840, "low": 1320, "high": 2260},
+    "cost_krw_per_month": 276000,
+    "co2_kg_per_month": 842.5,
+    "unit_price_source": "assumption"
+  }
+}

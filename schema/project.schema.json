@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agent-workbench project",
+  "description": "Contents of .workbench/project.yaml (parsed YAML). Closed vocabulary: unknown keys are rejected so that typos do not silently disappear. Cross-reference rules (unique ids, agent references, deliverable paths) live in the Python validator.",
+  "type": "object",
+  "required": ["project", "agents", "phases"],
+  "additionalProperties": false,
+  "properties": {
+    "project": {
+      "type": "object",
+      "required": ["id", "name", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" }
+      }
+    },
+    "agents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "role"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "role": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "phases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "status", "agents", "deliverables", "gate", "tasks"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "name": { "type": "string", "minLength": 1 },
+          "status": {
+            "description": "review = waiting for user approval.",
+            "enum": ["todo", "doing", "review", "blocked", "done"]
+          },
+          "agents": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/id" }
+          },
+          "deliverables": {
+            "description": "Project-relative file paths or globs (`*` within one path segment, `**` across segments). Done is judged by file existence and mtime of the expanded paths.",
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "gate": { "enum": ["dataset-selection", "phase-end"] },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "title", "status", "agent"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "$ref": "#/$defs/id" },
+                "title": { "type": "string", "minLength": 1 },
+                "status": { "enum": ["todo", "doing", "done"] },
+                "agent": { "$ref": "#/$defs/id" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "description": "Filename-safe identifier (phase ids appear in reviews/<phase>-<n>.json).",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    }
+  }
+}
