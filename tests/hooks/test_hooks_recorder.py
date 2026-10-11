@@ -60,6 +60,20 @@ def test_start_event_fields(project):
     assert ev["phase"] is None and ev["rev"] is None and ev["usage"] is None
 
 
+@pytest.mark.parametrize("agent_type", ["", "   ", None])
+def test_unnamed_helper_agents_are_not_recorded(project, agent_type):
+    # observed live: Claude Code's internal helper agents stop with an empty agent_type
+    payload = {"hook_event_name": "SubagentStop", "session_id": "s1", "agent_id": "h-1",
+               "agent_type": agent_type, "last_assistant_message": "free text"}
+    if agent_type is None:
+        del payload["agent_type"]
+    r = project.run(RECORD, payload)
+    assert r.returncode == 0 and r.stdout == ""
+    assert project.events() == []
+    project.run(RECORD, start_payload(agent_id="a-9", agent_type="data-engineer"))
+    assert [e["agent"] for e in project.events()] == ["data-engineer"]
+
+
 def test_file_name_uses_local_month(project):
     project.run(RECORD, start_payload())
     names = [p.name for p in (project.root / ".workbench").glob("events-*.jsonl")]

@@ -18,6 +18,23 @@ agents:
   - id: reviewer
     role: Independently verifies each phase before the gate
 
+# Optional: project-specific input for the shared reviewer and fieldbook-writer agents.
+review:
+  sources:
+    - docs/research/**
+  checks:
+    - id: leakage
+      text: Verify that training and validation data are separated and that no future information is used.
+      phases: [p4-analysis]
+    - id: units
+      text: Check column units, time zone and aggregation interval of every table that is used.
+      phases: [p3-data, p4-analysis]
+    - id: sources
+      text: Every factual claim cites a source URL and an access date, or is marked unverified.
+
+fieldbook:
+  title: Example Project Fieldbook
+
 phases:
   - id: p1-research
     name: Research

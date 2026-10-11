@@ -54,6 +54,11 @@ def build(payload: dict, project: str):
             agent = tool_input["subagent_type"]  # the agent that failed, not the caller
         summary = wb.sanitize_text(payload.get("error"))
 
+    # Claude Code runs unnamed helper agents (empty agent_type). They are not workbench work and
+    # would violate the contract (agent must be non-empty), so they are not recorded.
+    if not isinstance(agent, str) or not agent.strip():
+        return None
+
     return wb.build_event(
         event,
         session_id=payload.get("session_id"),

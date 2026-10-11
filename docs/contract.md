@@ -1,6 +1,6 @@
 # 데이터 계약 (Data Contract)
 
-agent-workbench가 쓰는 프로젝트 데이터의 형식과 검증 방법을 정의한다. 근거는 `DECISIONS.md`의 6절(데이터 계약)과 12절(변경 이력, 개정 1)이며, 여기에 없는 필드는 만들지 않는다.
+agent-workbench가 쓰는 프로젝트 데이터의 형식과 검증 방법을 정의한다. 근거는 `DECISIONS.md`의 6절(데이터 계약)과 12절(변경 이력, 개정 1)이며, 여기에 없는 필드는 만들지 않는다. 예외는 `project.yaml`의 선택 섹션 `review`, `fieldbook`이며 3절에 따로 적었다.
 
 ## 1. 파일 구성
 
@@ -116,15 +116,46 @@ agent-workbench가 쓰는 프로젝트 데이터의 형식과 검증 방법을 �
 | `phases[].tasks[].title` | string | 예 | 제목 |
 | `phases[].tasks[].status` | enum | 예 | `todo`, `doing`, `done` |
 | `phases[].tasks[].agent` | string | 예 | `agents[].id` 참조 |
+| `review` | object | 아니오 | 공통 `reviewer`에 주는 프로젝트별 입력. 없으면 `reviewer`는 범용 기준만 적용한다 |
+| `review.sources[]` | string[] | 아니오 | `reviewer`가 주장을 대조하려고 읽어도 되는 프로젝트 상대경로·글롭 (`deliverables`와 같은 문법) |
+| `review.checks[].id` | string | 예 (checks 항목) | `[A-Za-z0-9_-]+`. `checks` 안에서 유일 |
+| `review.checks[].text` | string | 예 (checks 항목) | 범용 기준에 더해 적용할 도메인 점검 내용 (비어 있지 않음) |
+| `review.checks[].phases` | string[] | 아니오 | 점검을 적용할 단계 id. 생략하면 모든 단계. 비어 있는 목록은 허용하지 않는다 |
+| `fieldbook` | object | 아니오 | 공통 `fieldbook-writer`에 주는 설정 |
+| `fieldbook.title` | string | 아니오 | 챕터 머리글에 쓸 문서 제목 (비어 있지 않음). 없으면 `project.name` |
 
 의미 검사(`validate_project`):
 
 - `agents[].id`, `phases[].id`는 프로젝트 안에서 유일, `tasks[].id`는 단계 안에서 유일.
 - `phases[].agents`와 `tasks[].agent`는 최상위 `agents[]`에 있어야 한다.
 - `deliverables`는 상대경로여야 하고 절대경로(POSIX/Windows), `~` 시작, `..` 구성요소를 허용하지 않는다. 글롭 문자는 허용한다. 글롭 문법 자체는 검사하지 않는다.
+- `review.checks[].id`는 `checks` 안에서 유일, `review.checks[].phases`의 각 항목은 최상위 `phases[].id`에 있어야 하며 한 점검 안에서 중복될 수 없다.
+- `review.sources`는 `deliverables`와 같은 경로 규칙을 따른다: 절대경로(POSIX/Windows), `~` 시작, `..` 구성요소를 허용하지 않는다.
+- `fieldbook.title`과 `review.checks[].text`는 공백만으로 이루어질 수 없다.
 - `doing` 단계는 최대 1개. 이벤트의 `phase`를 "`doing`인 단계"로 먼저 파생하기 때문이다(없으면 단일 `review` 단계, 필드 설명 참고).
 
 예시: `examples/project.yaml`.
+
+### 선택 섹션: `review`, `fieldbook`
+
+`reviewer`와 `fieldbook-writer`는 플러그인이 제공하는 공통 에이전트라 프로젝트가 같은 이름의 파일로 덮어쓸 수 없다. 프로젝트별 내용은 에이전트 파일 대신 `project.yaml`의 두 선택 섹션에 둔다. 두 섹션 모두 없어도 유효하며, 기존 파일은 그대로 유효하다. 최상위 그 밖의 키와 섹션 안의 알 수 없는 키는 여전히 거부한다.
+
+```yaml
+review:
+  sources:                  # reviewer가 출처 대조용으로 읽을 수 있는 경로·글롭
+    - docs/research/**
+  checks:                   # 범용 기준에 더해 적용할 도메인 점검
+    - id: leakage
+      text: 학습·검증 분리, 미래 정보 사용 여부를 점검한다
+      phases: [p4-analysis, p5-forecast]   # 생략하면 모든 단계
+fieldbook:
+  title: Manufacturing AX Fieldbook         # 생략하면 project.name
+```
+
+- `reviewer`는 범용 기준(선언된 산출물 존재, 쓰기 범위 위반, 주장의 출처·접근일, 확인 불가 항목의 지적 처리)을 항상 적용하고, 도메인 점검은 `review.checks`에서만 가져온다. `phases`를 생략한 점검은 모든 단계에, 지정한 점검은 해당 단계에만 적용한다. `review` 섹션이 없으면 리뷰 요약에 그렇게 적고 범용 기준만 적용한다.
+- `review.sources`는 읽기 전용 참고 경로이며 쓰기 범위를 넓히지 않는다.
+- `fieldbook-writer`는 `fieldbook.title`, 없으면 `project.name`을 문서 제목으로 쓴다.
+- 훅의 폴백 파서(`WORKBENCH_SIMPLE_YAML=1`)는 `phases:` 블록만 읽으므로 이 섹션의 `- id:` 항목을 단계로 오인하지 않는다 (`tests/hooks/test_hooks_phase_sections.py`).
 
 ### 산출물 배치 규칙
 

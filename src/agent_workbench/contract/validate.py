@@ -137,6 +137,7 @@ def validate_events_file(path: Union[str, Path]) -> list[str]:
 
 
 def _bad_deliverable(path: str) -> str | None:
+    """Why ``path`` is not a safe project-relative path/glob, or None (also used for review.sources)."""
     if PurePosixPath(path).is_absolute() or PureWindowsPath(path).is_absolute() or path.startswith("~"):
         return "must be a project-relative path, not absolute"
     if ".." in PurePosixPath(path.replace("\\", "/")).parts:
@@ -172,6 +173,40 @@ def _project_semantic_errors(data: dict) -> list[str]:
         for ti, task in enumerate(phase["tasks"]):
             if task["agent"] not in known:
                 errors.append(f"{base}.tasks[{ti}].agent: unknown agent {task['agent']!r} (not in top-level agents)")
+
+    errors.extend(_review_fieldbook_errors(data))
+    return errors
+
+
+def _review_fieldbook_errors(data: dict) -> list[str]:
+    """Optional top-level ``review`` and ``fieldbook`` sections."""
+    errors: list[str] = []
+    phase_ids = {p["id"] for p in data["phases"]}
+
+    review = data.get("review")
+    if isinstance(review, dict):
+        for si, source in enumerate(review.get("sources") or []):
+            problem = _bad_deliverable(source)
+            if problem or not source.strip():
+                errors.append(f"$.review.sources[{si}]: {source!r} {problem or 'must not be blank'}")
+
+        checks = review.get("checks") or []
+        for dup in _duplicates([c["id"] for c in checks]):
+            errors.append(f"$.review.checks: duplicate check id {dup!r}")
+        for ci, check in enumerate(checks):
+            base = f"$.review.checks[{ci}]"
+            if not check["text"].strip():
+                errors.append(f"{base}.text: must not be blank")
+            phases = check.get("phases") or []
+            for dup in _duplicates(phases):
+                errors.append(f"{base}.phases: duplicate phase id {dup!r}")
+            for pi, phase in enumerate(phases):
+                if phase not in phase_ids:
+                    errors.append(f"{base}.phases[{pi}]: unknown phase {phase!r} (not in top-level phases)")
+
+    fieldbook = data.get("fieldbook")
+    if isinstance(fieldbook, dict) and "title" in fieldbook and not fieldbook["title"].strip():
+        errors.append("$.fieldbook.title: must be a non-empty string")
     return errors
 
 

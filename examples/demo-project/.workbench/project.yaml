@@ -23,6 +23,19 @@ agents:
   - id: reviewer
     role: Independently verifies each phase before the gate
 
+review:
+  sources:
+    - docs/research/**
+  checks:
+    - id: leakage
+      text: 학습·검증 분리와 미래 정보 사용 여부를 점검한다 (가짜 예시).
+      phases: [p4-analysis, p5-forecast]
+    - id: sources
+      text: 모든 사실 주장에 출처와 접근일이 있거나 미검증으로 표시됐는지 점검한다 (가짜 예시).
+
+fieldbook:
+  title: 데모 프로젝트 필드북
+
 phases:
   - id: p1-research
     name: 조사

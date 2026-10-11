@@ -303,6 +303,122 @@ def test_project_two_doing_phases():
     assert any("at most one phase" in e for e in errors)
 
 
+# --- optional review / fieldbook sections ---------------------------------
+
+
+def test_example_projects_have_review_and_fieldbook_sections():
+    data = example_project()
+    assert data["review"]["checks"] and data["review"]["sources"]
+    assert data["fieldbook"]["title"]
+    demo = EXAMPLES / "demo-project" / ".workbench" / "project.yaml"
+    assert validate_project(demo) == []
+
+
+def test_project_without_review_and_fieldbook_is_valid():
+    data = copy.deepcopy(example_project())
+    del data["review"], data["fieldbook"]
+    assert validate_project(data) == []
+
+
+def test_project_empty_review_and_fieldbook_are_valid():
+    data = copy.deepcopy(example_project())
+    data["review"] = {}
+    data["fieldbook"] = {}
+    assert validate_project(data) == []
+
+
+def test_project_review_check_without_phases_applies_everywhere_and_is_valid():
+    data = copy.deepcopy(example_project())
+    data["review"] = {"checks": [{"id": "c1", "text": "check something"}]}
+    assert validate_project(data) == []
+
+
+def test_project_review_unknown_keys_rejected():
+    assert any("owner" in e for e in mutate_project(lambda d: d["review"].update(owner="x")))
+    assert any("severity" in e for e in mutate_project(lambda d: d["review"]["checks"][0].update(severity="high")))
+    assert any("subtitle" in e for e in mutate_project(lambda d: d["fieldbook"].update(subtitle="x")))
+    assert any("extra" in e for e in mutate_project(lambda d: d.update(extra={})))
+
+
+def test_project_review_check_requires_id_and_text():
+    errors = mutate_project(lambda d: d["review"]["checks"][0].pop("id"))
+    assert any("'id' is a required property" in e for e in errors)
+    errors = mutate_project(lambda d: d["review"]["checks"][0].pop("text"))
+    assert any("'text' is a required property" in e for e in errors)
+
+
+@pytest.mark.parametrize("check_id", ["has space", "dot.id", "", "slash/id", "한글"])
+def test_project_review_check_bad_id(check_id):
+    errors = mutate_project(lambda d: d["review"]["checks"][0].update(id=check_id))
+    assert any("$.review.checks[0].id" in e for e in errors), errors
+
+
+def test_project_review_check_id_may_start_with_underscore_or_dash():
+    data = copy.deepcopy(example_project())
+    data["review"]["checks"][0]["id"] = "_a-1"
+    data["review"]["checks"][1]["id"] = "-b_2"
+    assert validate_project(data) == []
+
+
+def test_project_review_duplicate_check_ids():
+    errors = mutate_project(lambda d: d["review"]["checks"][1].update(id=d["review"]["checks"][0]["id"]))
+    assert any("duplicate check id" in e for e in errors)
+
+
+def test_project_review_check_unknown_phase():
+    errors = mutate_project(lambda d: d["review"]["checks"][0].update(phases=["p4-analysis", "p9-ghost"]))
+    assert any("$.review.checks[0].phases[1]" in e and "unknown phase 'p9-ghost'" in e for e in errors)
+
+
+def test_project_review_check_duplicate_phase_and_empty_phases():
+    errors = mutate_project(lambda d: d["review"]["checks"][0].update(phases=["p4-analysis", "p4-analysis"]))
+    assert any("duplicate phase id" in e for e in errors)
+    errors = mutate_project(lambda d: d["review"]["checks"][0].update(phases=[]))
+    assert any("$.review.checks[0].phases" in e for e in errors)
+
+
+def test_project_review_check_blank_text():
+    errors = mutate_project(lambda d: d["review"]["checks"][0].update(text="   "))
+    assert any("$.review.checks[0].text" in e for e in errors)
+    errors = mutate_project(lambda d: d["review"]["checks"][0].update(text=""))
+    assert any("$.review.checks[0].text" in e for e in errors)
+
+
+@pytest.mark.parametrize("path", ["../secrets/**", "docs/../../x.md", "/etc/passwd", "C:\\x\\y", "~/notes/**", "   "])
+def test_project_review_bad_sources(path):
+    errors = mutate_project(lambda d: d["review"]["sources"].append(path))
+    assert any("$.review.sources[" in e for e in errors), errors
+
+
+@pytest.mark.parametrize("pattern", ["docs/research/**", "docs/**/*.md", "notebooks/*.ipynb", "README.md"])
+def test_project_review_good_sources(pattern):
+    data = copy.deepcopy(example_project())
+    data["review"]["sources"].append(pattern)
+    assert validate_project(data) == []
+
+
+def test_project_review_sources_must_be_strings():
+    errors = mutate_project(lambda d: d["review"].update(sources=[1]))
+    assert any("$.review.sources[0]" in e for e in errors)
+    errors = mutate_project(lambda d: d["review"].update(sources="docs/**"))
+    assert any("$.review.sources" in e for e in errors)
+
+
+@pytest.mark.parametrize("title", ["", "   ", 3, None, ["x"]])
+def test_project_fieldbook_title_must_be_non_empty_string(title):
+    errors = mutate_project(lambda d: d["fieldbook"].update(title=title))
+    assert any("$.fieldbook.title" in e for e in errors), errors
+
+
+def test_project_review_errors_do_not_hide_schema_errors_elsewhere():
+    def both(d):
+        d["review"]["checks"][0]["phases"] = ["p9-ghost"]
+        d["phases"][0].update(status="finished")
+
+    errors = mutate_project(both)
+    assert any("$.phases[0].status" in e for e in errors)
+
+
 def test_project_invalid_yaml(tmp_path):
     path = tmp_path / "project.yaml"
     path.write_text("project: [unclosed", encoding="utf-8")

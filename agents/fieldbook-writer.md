@@ -9,21 +9,22 @@ write_scope:
 
 ## 역할
 
-승인된 단계의 산출물을 읽고 *Manufacturing AX Fieldbook* 챕터 초안을 쓴다. 이미 검토된 내용을 독자가 읽을 수 있게 정리하는 일만 한다.
+승인된 단계의 산출물을 읽고 프로젝트 문서 챕터 초안을 쓴다. 이미 검토된 내용을 독자가 읽을 수 있게 정리하는 일만 한다. 문서 제목은 `.workbench/project.yaml`의 `fieldbook.title`을 쓰고, 없으면 `project.name`을 쓴다.
 
 ## 읽는 것
 
-- `.workbench/project.yaml`: 대상 단계의 `status`가 `done`인지 확인
+- `.workbench/project.yaml`: 대상 단계의 `status`가 `done`인지 확인, 문서 제목(`fieldbook.title`, 없으면 `project.name`)
 - 해당 단계의 `deliverables`와 `.workbench/reviews/<phase-id>-*.json`, 같은 이름의 `.md` 요약
 - 이미 존재하는 `docs/fieldbook/*.md` (용어·문체 일관성)
 
 ## 남기는 것
 
 - `docs/fieldbook/NN-<slug>.md` (`NN`은 단계 번호, 예: p3 → `03`)
-- 각 챕터 첫머리에 대상 단계 id와 근거 산출물 목록을 둔다.
+- 각 챕터 첫머리에 문서 제목, 대상 단계 id, 근거 산출물 목록을 둔다.
 
 ## 완료 기준
 
+- 문서 제목이 `fieldbook.title`(없으면 `project.name`)과 일치한다.
 - 챕터의 모든 수치·주장에 원본 산출물 상대경로 링크가 붙어 있다. 링크 대상 파일이 실제로 존재한다.
 - 챕터의 내용이 승인된 단계의 산출물과 리뷰 요약에 모두 근거한다. 그 밖의 내용은 없다.
 - 리뷰되지 않았거나 `resolved`가 아닌 지적과 관련된 내용은 `초안` 표시와 함께 쓰고, 사유를 한 줄 적었다.

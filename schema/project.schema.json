@@ -16,6 +16,53 @@
         "description": { "type": "string" }
       }
     },
+    "review": {
+      "description": "Optional. Project-specific input for the shared reviewer agent. Absent = the reviewer applies its generic baseline only.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sources": {
+          "description": "Project-relative paths or globs the reviewer may read to cross-check claims (same glob syntax as deliverables). Absolute paths, '~' and '..' are rejected by the validator.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "checks": {
+          "description": "Domain checks applied in addition to the reviewer's generic baseline.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "text"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "description": "Unique within checks.",
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]+$"
+              },
+              "text": { "type": "string", "minLength": 1 },
+              "phases": {
+                "description": "Phase ids the check applies to. Omitted = every phase. Each entry must be an existing phase id (validator).",
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/id" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "fieldbook": {
+      "description": "Optional. Settings for the shared fieldbook-writer agent.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "description": "Document title used in chapter headers. Falls back to project.name.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "agents": {
       "type": "array",
       "items": {

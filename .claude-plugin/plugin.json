@@ -1,7 +1,7 @@
 {
   "name": "agent-workbench",
   "displayName": "Agent Workbench",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Per-project agent orchestration kit: event contract, hooks, skills, common agents and a Streamlit dashboard",
   "author": { "name": "dpcivl" },
   "repository": "https://github.com/dpcivl/agent-workbench",

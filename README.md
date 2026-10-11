@@ -1,6 +1,6 @@
 # agent-workbench
 
-Claude Code에서 **여러 에이전트에게 일을 나눠 맡기고, 진행 상황을 한 화면에서 보게 해 주는 도구**입니다. 프로젝트마다 갈아끼워 쓸 수 있게 만들었고, 첫 사용 프로젝트는 가짜연구소 13기 [pseudolab-13th](https://github.com/dpcivl/pseudolab-13th)입니다. 상태: 초기 버전(0.1.0).
+Claude Code에서 **여러 에이전트에게 일을 나눠 맡기고, 진행 상황을 한 화면에서 보게 해 주는 도구**입니다. 프로젝트마다 갈아끼워 쓸 수 있게 만들었고, 첫 사용 프로젝트는 가짜연구소 13기 [pseudolab-13th](https://github.com/dpcivl/pseudolab-13th)입니다. 상태: 초기 버전(0.2.0).
 
 이 문서는 위에서부터 순서대로 따라 하면 `pseudolab-13th`에서 바로 쓸 수 있게 썼습니다.
 
@@ -193,7 +193,12 @@ PYTHONPATH=src uv run --no-project --with streamlit --with altair --with pandas 
 2. `/agent-workbench:project-init <프로젝트id> "<프로젝트 이름>"`을 실행합니다. `.workbench/project.yaml` 템플릿이 만들어지고 프로젝트가 등록부(`~/.agent-workbench/workspace.yaml`)에 추가됩니다.
 3. `.workbench/project.yaml`에서 단계(`phases`)와 약속할 산출물(`deliverables`)을 고칩니다.
 4. `.claude/agents/`에 이 프로젝트의 **도메인 에이전트**를 만듭니다. 각 파일에 `write_scope`를 반드시 적어야 합니다. (`pseudolab-13th/.claude/agents/`의 파일을 예시로 쓰세요. 공통 에이전트 3개는 이 도구가 제공합니다.)
-5. 4단계처럼 `/agent-workbench:run-phase <단계id>`로 시작합니다.
+5. 공통 검토·챕터 에이전트에 프로젝트 내용을 주려면 `.workbench/project.yaml`에 선택 섹션을 추가합니다. 없어도 동작합니다.
+   - `review.checks`: 검토 에이전트가 범용 점검에 더해 적용할 도메인 점검 (`id`, `text`, 선택으로 `phases`). 없으면 범용 점검만 합니다.
+   - `review.sources`: 검토 에이전트가 출처 대조용으로 읽어도 되는 경로·글롭 (예: `docs/research/**`).
+   - `fieldbook.title`: 챕터 머리글에 쓸 문서 제목. 없으면 `project.name`을 씁니다.
+   - 형식과 예시는 [`docs/contract.md`](docs/contract.md)의 `project.yaml` 절과 `examples/project.yaml`을 보세요.
+6. 4단계처럼 `/agent-workbench:run-phase <단계id>`로 시작합니다.
 
 대시보드는 `--project` 없이 실행하면 등록부에 있는 프로젝트를 드롭다운으로 고를 수 있습니다.
 
